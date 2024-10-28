@@ -2,7 +2,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Collection, Sequence
 from pathlib import Path
 import numpy as np
-from bqm.model.typing import Variable, Bias, Vartype
+from bqmpy.model.typing import Variable, Bias, Vartype
+
+__all__ = ['BinaryQuadraticModel']
 
 # Note: We can build a class upon this, which enforces the use of n-bit weights.
 class BinaryQuadraticModel(object):
@@ -34,19 +36,32 @@ class BinaryQuadraticModel(object):
             offset: Bias,
             vartype: Vartype
             ):
+        if not isinstance(vartype, Vartype):
+            raise ValueError(f'Vartype unkown: {vartype}')
         self.linear: dict[Variable, Bias] = {}
         self.quadratic: dict[frozenset[Variable, Variable], Bias] = {}
-        self.offset: Bias = offset
+        self.offset: Bias = 0
         self.vartype: Vartype = vartype
 
-        self.add_variables_from(linear)
-        self.add_interactions_from(quadratic)
+        self.set_variables_from(linear)
+        self.set_interactions_from(quadratic)
+        self.set_offset(offset)
 
     def __repr__(self) -> str:
         return f'BinaryQuadraticModel({self.linear}, {self.quadratic}, {self.offset}, {self.vartype})'
 
     def __len__(self) -> int:
         return self.num_variables
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, BinaryQuadraticModel):
+            return False
+        return all([
+            self.linear == other.linear,
+            self.quadratic == other.quadratic,
+            self.offset == other.offset,
+            self.vartype == other.vartype
+        ])
 
     @property
     def num_variables(self) -> int:
@@ -103,7 +118,7 @@ class BinaryQuadraticModel(object):
                 bias *= -1/4
             else:
                 raise ValueError(f'Vartype unknown: {Vartype}')
-        self.quadratic[frozenset(u, v)] = bias
+        self.quadratic[frozenset({u, v})] = bias
 
     def set_interactions_from(self, quadratic: Mapping[Collection[Variable, Variable], Bias], vartype: Vartype|None = None):
         """Set interactions of the BQM."""
@@ -111,25 +126,32 @@ class BinaryQuadraticModel(object):
             self.set_interaction(u, v, bias, vartype)
 
     def remove_variable(self, v: Variable):
+        """Remove variable from the BQM.
+        The corresponding linear term and all interactions involving the given variables are removed.
+        """
         if v not in self.linear:
             return
         del self.linear[v]
-        for e in self.quadratic:
+        for e in list(self.quadratic.keys()):
             if v in e:
                 del self.quadratic[e]
         
     def remove_interaction(self, e: Collection[Variable, Variable]):
+        """Remove interaction from the BQM."""
         e = frozenset(e)
         if e in self.quadratic:
             del self.quadratic[e]
 
     def scale(self, scalar: Bias):
+        """Scale all components of the BQM."""
         for v in self.linear:
             self.linear[v] *= scalar
         for e in self.quadratic:
             self.quadratic[e] *= scalar
+        self.offset *= scalar
 
     def change_vartype(self, vartype: Vartype):
+        """Change the vartype of the given BQM encoding in place."""
         if vartype is self.vartype:
             return
         if vartype is Vartype.SPIN and self.vartype is Vartype.BINARY:
@@ -141,6 +163,9 @@ class BinaryQuadraticModel(object):
 
     @staticmethod
     def spin_to_binary(linear: dict[Variable, Bias], quadratic: dict[frozenset[Variable, Variable], Bias], offset: Bias):
+        """Calculate spin-to-binary conversion.
+        Static method to convert a given linear, quadratic and offset from spin encoding to their binary counterpart.
+        """
         linear = { v : 1/4 * sum([ bias for (e, bias) in quadratic.items() if v in e ]) - 1/2 * bias for (v, bias) in linear.items() }
         quadratic = { e : -1/4 * bias for (e, bias) in quadratic.items() }
         offset = 1/4 * sum(quadratic.values()) + 1/2 * sum(linear.values())
@@ -148,12 +173,16 @@ class BinaryQuadraticModel(object):
 
     @staticmethod
     def binary_to_spin(linear: dict[Variable, Bias], quadratic: dict[frozenset[Variable, Variable], Bias], offset: Bias):
+        """Calculate binary-to-spin conversion.
+        Static method to convert a given linear, quadratic and offset from binary encoding to their spin counterpart.
+        """
         linear = { v : 2 * sum([ bias for (e, bias) in quadratic.items() if v in e ]) - 2 * bias for (v, bias) in linear.items() }
         quadratic = { e : -4 * bias for (e, bias) in quadratic.items() }
         offset = - sum(quadratic.values()) + sum(linear.values())
         return linear, quadratic, offset
 
     def eval(self, sample: Mapping[Variable, bool]) -> Bias:
+        """Evaluate the BQM for a given sample."""
         if self.vartype is Vartype.SPIN:
             t = { True: -1, False: 1 }
             q_sign, l_sign = -1, -1
@@ -167,9 +196,13 @@ class BinaryQuadraticModel(object):
         return q_sign * quadratic + l_sign * linear + self.offset
 
     def copy(self) -> BinaryQuadraticModel:
+        """Create hard-copy of the BQM object"""
         return BinaryQuadraticModel(self.linear, self.quadratic, self.offset, self.vartype)
 
     def to_qubo(self, variable_order: Sequence[Variable]|None = None) -> tuple[np.ndarray, Bias]:
+        """Extract a QUBO matrix for this BQM.
+        Variable_order may be supplied to fix the order of variables in the matrix.
+        """
         self.change_vartype(Vartype.BINARY)
         Q = np.zeros((self.num_variables)*2, dtype=float)
         if variable_order is None:
@@ -192,12 +225,14 @@ class BinaryQuadraticModel(object):
 
     @classmethod
     def from_qubo(cls, Q: np.ndarray, offset: Bias = 0.0, variable_order: Sequence[Variable]|None = None) -> BinaryQuadraticModel:
+        """Create BQM from a QUBO matrix.
+        Variable_order may be supplied to label the nodes of the BQM.
+        If not supplied, integers (starting at 0) will be used as variable names.
+        """
         if Q.ndim != 2:
-            raise ValueError()
+            raise ValueError('Given QUBO matrix is not 2-dimensional')
         if Q.shape[0] != Q.shape[1]:
-            raise ValueError()
-        if Q.shape[0] < 1:
-            raise ValueError()
+            raise ValueError('Given QUBO matrix is not square')
         if variable_order is None:
             variable_order = list(range(Q.shape[0]))
         try:
@@ -212,10 +247,13 @@ class BinaryQuadraticModel(object):
                 else:
                     continue
         except IndexError:
-            raise ValueError()
+            raise ValueError('Given variable_order should have the same size as the QUBO matrix')
         return bqm
 
     def to_ising(self, variable_order: Sequence[Variable]|None = None) -> tuple[np.ndarray, np.ndarray, Bias]:
+        """Extract Ising matrix/vector representation for this BQM.
+        Variable_order may be supplied to fix the order of variables in the matrix.
+        """
         self.change_vartype(Vartype.SPIN)
         h = np.zeros((self.num_variables), dtype=float)
         J = np.zeros((self.num_variables)*2, dtype=float)
@@ -234,20 +272,22 @@ class BinaryQuadraticModel(object):
                     J[iv, iu] = bias
         except KeyError:
             raise ValueError(f'variable {v} missing from variable_order')
-        return h
+        return h, J
 
     @classmethod
     def from_ising(cls, h: np.ndarray, J: np.ndarray, offset: Bias = 0.0, variable_order: Sequence[Variable]|None = None) -> BinaryQuadraticModel:
+        """Create BQM from Ising matrix/vector represenation.
+        Variable_order may be supplied to label the nodes of the BQM.
+        If not supplied, integers (starting at 0) will be used as variable names.
+        """
         if h.ndim != 1:
-            raise ValueError()
-        if h.size < 1:
-            raise ValueError()
+            raise ValueError('h must be a 1-dimensional ndarray')
         if J.ndim != 2:
-            raise ValueError()
+            raise ValueError('J must be a 2-dimensional ndarray')
         if J.shape[0] != J.shape[1]:
-            raise ValueError()
+            raise ValueError('J must be square')
         if J.shape[0] != h.size:
-            raise ValueError()
+            raise ValueError('J and h must have matching sizes')
         if variable_order is None:
             variable_order = list(range(h.size))
         try:
@@ -262,7 +302,7 @@ class BinaryQuadraticModel(object):
                 else:
                     continue
         except IndexError:
-            raise ValueError()
+            raise ValueError('Given variable_order does not contain all nodes')
         return bqm
 
     def to_file(self, file: Path):

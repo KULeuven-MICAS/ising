@@ -18,6 +18,3 @@ class Vartype(enum.Enum):
 
 SPIN = Vartype.SPIN
 BINARY = Vartype.BINARY
-
-# A mapping of
-Sample = collections.abc.Mapping[Variable, bool]
