@@ -1,0 +1,8 @@
+[project]
+name = "ising"
+description = "Exploration into ising machines"
+dynamic = ["version"]
+
+[tool.pytest.ini_options]
+testpaths = "tests"
+pytest_plugins = "pytest-randomly"
