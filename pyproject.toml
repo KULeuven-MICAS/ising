@@ -5,4 +5,3 @@ dynamic = ["version"]
 
 [tool.pytest.ini_options]
 testpaths = "tests"
-pytest_plugins = "pytest-randomly"

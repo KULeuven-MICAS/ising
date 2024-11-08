@@ -1,6 +1,7 @@
 import pytest
 
-from ising.model import BinaryQuadraticModel, Vartype
+from ising.typing import Vartype
+from ising.model import BinaryQuadraticModel
 
 class TestClass:
 
