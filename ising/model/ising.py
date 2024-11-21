@@ -4,7 +4,8 @@ import pathlib
 from collections.abc import Callable, Iterable
 
 import ising.utils.numpy as npu
-from ising.typing import Bias
+
+Bias = int | float
 
 
 class IsingModel:

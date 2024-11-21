@@ -1,5 +1,4 @@
 import numpy as np
-import numpy.typing
 
 
 def triu_to_symm(m: np.ndarray, inplace: bool = False):
