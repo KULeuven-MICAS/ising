@@ -6,7 +6,7 @@ import itertools
 
 from ising.model.ising import IsingModel
 
-class csvLogger:
+class SolverLogger:
 
     def __init__(self, file: pathlib.Path|None, model: IsingModel, *extra_fields):
         self.file = file
@@ -39,4 +39,7 @@ class Solver(ABC):
         pass
 
     def open_log(self, file: pathlib.Path|None, model: IsingModel, *extra_fields):
-        return csvLogger(file, model, *extra_fields)
+        return SolverLogger(file, model, *extra_fields)
+
+    def change_node(self, node:int):
+        self.sigma[node] = -self.sigma[node]
