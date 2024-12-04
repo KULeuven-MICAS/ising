@@ -15,5 +15,6 @@ ENV/
 # C extensions
 *.so
 
-# Output folders
+# Output folders and figures
 output/
+*.png

@@ -6,11 +6,12 @@ import pathlib
 from ising.generators.MaxCut import MaxCut
 from ising.benchmarks.parsers.G import G_parser
 from ising.solvers.SB import discreteSB, ballisticSB
-from ising.postprocessing.energy_plot import plot_energies_multiple
+from ising.postprocessing.energy_plot import plot_energy_dist_multiple_solvers
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-benchmark', help="Which Max-Cut benchmark to generate", default='G_dummy.txt')
-parser.add_argument('-nb_runs', help='Number of runs', default=1)
+parser.add_argument('-best', help='Best found energy', default=0)
+parser.add_argument('-nb_runs', help='Number of runs', default=2)
 parser.add_argument('-num_iter', help='range of total amount of iterations', default=(100, 1000))
 parser.add_argument('-it_step', help='Step between number of iterations', default=100)
 parser.add_argument('-dt', help='Time step', default=0.25)
@@ -51,5 +52,6 @@ for i in range(int(args.nb_runs)):
         logfiles.append(logfile)
         state, energy = ballisticSB().solve(model, x, y, num_iterations, at, c0, a0, args.dt, file=logfile)
         print(f"  state={state}, energy={energy}")
-
-plot_energies_multiple(logfiles, save_folder=TOP / 'ising/flow/plots')
+if args.best != 0:
+    best = float(args.best)
+plot_energy_dist_multiple_solvers(logfiles, best_found=best, save_folder=TOP / 'ising/flow/plots')
